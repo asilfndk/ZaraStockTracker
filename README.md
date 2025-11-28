@@ -34,8 +34,8 @@ A native macOS desktop application that monitors Zara product stock availability
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/asilfndk/ZaraStok.git
-   cd ZaraStok
+   git clone https://github.com/asilfndk/ZaraStockTracker.git
+   cd ZaraStockTracker
    ```
 
 2. **Run the installer**
