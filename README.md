@@ -40,6 +40,10 @@ A native macOS desktop application that monitors Zara product stock availability
 
 2. **Run the installer**
    ```bash
+   # If you get "damaged" error, run this first:
+   xattr -d com.apple.quarantine install.sh
+   
+   # Then run the installer
    ./install.sh
    ```
 
