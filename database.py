@@ -3,9 +3,14 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import os
 
-# Database connection
-DATABASE_URL = "sqlite:///zara_stock.db"
+# Database connection - store in user's home directory for write access
+DB_DIR = os.path.join(os.path.expanduser("~"), ".zara_stock_tracker")
+os.makedirs(DB_DIR, exist_ok=True)
+DATABASE_PATH = os.path.join(DB_DIR, "zara_stock.db")
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
