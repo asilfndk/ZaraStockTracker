@@ -1,10 +1,15 @@
-"""Zara Stock Tracker - Size tracking with sound alerts"""
+"""Zara Stock Tracker - Size tracking with sound alerts, price history, and push notifications"""
 import streamlit as st
 import streamlit.components.v1 as components
+import pandas as pd
 from datetime import datetime
 import time
-from database import init_db, get_session, ZaraProduct, ZaraStockStatus
+from database import (
+    init_db, get_session, ZaraProduct, ZaraStockStatus,
+    get_setting, set_setting, add_price_history, get_price_history
+)
 from zara_scraper import ZaraScraper
+from notifications import send_notification
 
 # Page configuration
 st.set_page_config(
@@ -28,6 +33,12 @@ if 'sound_enabled' not in st.session_state:
     st.session_state.sound_enabled = False
 if 'pending_alarm' not in st.session_state:
     st.session_state.pending_alarm = False
+if 'push_notifications' not in st.session_state:
+    st.session_state.push_notifications = get_setting(
+        "push_notifications", "true") == "true"
+if 'refresh_interval' not in st.session_state:
+    st.session_state.refresh_interval = int(
+        get_setting("refresh_interval", "60"))
 
 # CSS styles
 st.markdown("""
@@ -242,6 +253,10 @@ def add_product(url: str, desired_size: str = None):
     session.add(new_product)
     session.flush()
 
+    # Record initial price history
+    add_price_history(new_product.id, result.price,
+                      result.old_price, result.discount)
+
     for size in result.sizes:
         stock_status = ZaraStockStatus(
             zara_product_id=new_product.id,
@@ -300,7 +315,7 @@ total_products = session_count.query(
 session_count.close()
 
 # Main tabs
-tab1, tab2 = st.tabs(["📋 Tracking List", "➕ Add Product"])
+tab1, tab2, tab3 = st.tabs(["📋 Tracking List", "➕ Add Product", "⚙️ Settings"])
 
 with tab1:
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -417,12 +432,33 @@ with tab1:
                         st.caption(
                             f"🕐 Last check: {product.last_check.strftime('%d.%m.%Y %H:%M:%S')}")
 
+                    # Price history expander
+                    with st.expander("📊 Price History"):
+                        history = get_price_history(product.id, limit=30)
+                        if history:
+                            history_data = [{'Date': h.recorded_at.strftime(
+                                '%m/%d'), 'Price': h.price} for h in reversed(history)]
+                            df = pd.DataFrame(history_data)
+                            st.line_chart(df.set_index('Date'))
+                            if len(history) >= 2:
+                                change = history[0].price - history[-1].price
+                                if change < 0:
+                                    st.success(
+                                        f"💰 Price dropped ₺{abs(change):.0f}!")
+                                elif change > 0:
+                                    st.warning(
+                                        f"📈 Price increased ₺{change:.0f}")
+                        else:
+                            st.info("No price history yet.")
+
                 with col3:
                     st.write("")
                     st.write("")
                     if st.button("🗑️", key=f"del_{product.id}", help="Delete product"):
                         alarm_key = f"{product.id}_{product.desired_size}"
                         st.session_state.alarm_triggered.discard(alarm_key)
+                        # Close session before delete to avoid db lock
+                        session.close()
                         delete_product(product.id)
                         st.rerun()
 
@@ -493,21 +529,83 @@ with tab2:
             st.warning("⚠️ Please enter a URL!")
 
 
+# Tab 3: Settings
+with tab3:
+    st.subheader("⚙️ Settings")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("#### 🔔 Notifications")
+
+        push_enabled = st.toggle(
+            "Push Notifications (macOS)",
+            value=st.session_state.push_notifications,
+            help="Show native macOS notifications when sizes become available"
+        )
+        if push_enabled != st.session_state.push_notifications:
+            st.session_state.push_notifications = push_enabled
+            set_setting("push_notifications",
+                        "true" if push_enabled else "false")
+            st.success("✅ Setting saved!")
+
+        sound_enabled = st.toggle(
+            "Sound Alerts",
+            value=st.session_state.sound_enabled,
+            help="Play sound when desired sizes become available"
+        )
+        if sound_enabled != st.session_state.sound_enabled:
+            st.session_state.sound_enabled = sound_enabled
+
+    with col2:
+        st.markdown("#### ⏱️ Auto-Refresh")
+
+        refresh_options = {30: "30 seconds", 60: "1 minute",
+                           120: "2 minutes", 300: "5 minutes"}
+
+        current = st.session_state.refresh_interval
+        selected = st.selectbox(
+            "Refresh Interval",
+            options=list(refresh_options.keys()),
+            format_func=lambda x: refresh_options[x],
+            index=list(refresh_options.keys()).index(
+                current) if current in refresh_options else 1
+        )
+
+        if selected != st.session_state.refresh_interval:
+            st.session_state.refresh_interval = selected
+            set_setting("refresh_interval", str(selected))
+            st.success("✅ Interval updated!")
+
+        auto_enabled = st.toggle(
+            "Auto-Refresh Enabled",
+            value=st.session_state.auto_refresh
+        )
+        if auto_enabled != st.session_state.auto_refresh:
+            st.session_state.auto_refresh = auto_enabled
+
+    st.divider()
+    st.markdown(
+        "**Zara Stock Tracker v4.0** - Price history, push notifications, wishlist import")
+
 # Footer
 st.divider()
 col1, col2, col3 = st.columns(3)
 with col2:
     sound_status = "🔊 Sound on" if st.session_state.sound_enabled else "🔇 Sound off"
+    push_status = "🔔 Push on" if st.session_state.push_notifications else "🔕 Push off"
     st.caption(
-        f"{sound_status} • Zara Stock Tracker v3.0 • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        f"{sound_status} • {push_status} • v4.0 • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
 
 # Render pending alarm sound
 render_alarm_sound()
 
-# Auto-refresh
+# Auto-refresh (non-blocking, configurable interval)
 if st.session_state.auto_refresh and total_products > 0:
     time_diff = (datetime.now() - st.session_state.last_update).total_seconds()
-    if time_diff >= 60:
+    refresh_interval = st.session_state.refresh_interval
+
+    if time_diff >= refresh_interval:
         st.session_state.last_update = datetime.now()
         updated, changes, alerts = update_all_products()
 
@@ -517,8 +615,11 @@ if st.session_state.auto_refresh and total_products > 0:
                 if alarm_key not in st.session_state.alarm_triggered:
                     st.session_state.alarm_triggered.add(alarm_key)
                     play_alert_sound()
+                    # Send push notification if enabled
+                    if st.session_state.push_notifications:
+                        send_notification(
+                            title="🎉 Size Available!",
+                            message=f"{item.get('product_name', 'Product')} - {item['size']} is now in stock!"
+                        )
 
-        st.rerun()
-    else:
-        time.sleep(max(1, 60 - time_diff))
         st.rerun()
