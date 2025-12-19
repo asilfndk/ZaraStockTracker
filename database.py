@@ -1,4 +1,5 @@
 """Database models and connection"""
+from sqlalchemy import event
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -12,7 +13,25 @@ os.makedirs(DB_DIR, exist_ok=True)
 DATABASE_PATH = os.path.join(DB_DIR, "zara_stock.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-engine = create_engine(DATABASE_URL, echo=False)
+
+# Database setup with better concurrency
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={'timeout': 30},  # Wait up to 30s instead of default 5s
+    echo=False
+)
+
+# Enable WAL mode for better concurrency
+
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
+
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
