@@ -28,18 +28,33 @@ fi
 
 # Activate and install dependencies
 echo "📥 Installing dependencies..."
-source .venv/bin/activate
-pip install -q --upgrade pip
-pip install -q streamlit pywebview sqlalchemy httpx pandas pync rumps
+# Use direct path to pip to avoid activation issues in some shells
+"$PROJECT_DIR/.venv/bin/pip" install -q --upgrade pip
+"$PROJECT_DIR/.venv/bin/pip" install -q streamlit sqlalchemy httpx pandas pync rumps watchdog
 
 echo "✓ Dependencies installed"
 
 # Initialize database
 echo "🗄️  Initializing database..."
-python3 -c "from database import init_db; init_db()"
+"$PROJECT_DIR/.venv/bin/python" -c "from database import init_db; init_db()"
 
 # Create macOS app bundles
 echo "🍎 Creating macOS apps..."
+
+# Common wrapper script content generator
+# We use direct path to python in venv to avoid permission issues with 'source'
+create_launcher() {
+    local app_name="$1"
+    local script_name="$2"
+    local dest="$3"
+    
+    cat > "$dest" << LAUNCHER
+#!/bin/bash
+cd "$PROJECT_DIR"
+"$PROJECT_DIR/.venv/bin/python" "$script_name"
+LAUNCHER
+    chmod +x "$dest"
+}
 
 # 1. Main Dashboard App
 APP_NAME="Zara Stock Tracker"
@@ -47,14 +62,7 @@ APP_DIR="$HOME/Applications/$APP_NAME.app"
 rm -rf "$APP_DIR" 2>/dev/null || true
 mkdir -p "$APP_DIR/Contents/MacOS"
 
-# Create launcher that runs from project directory
-cat > "$APP_DIR/Contents/MacOS/$APP_NAME" << LAUNCHER
-#!/bin/bash
-cd "$PROJECT_DIR"
-source .venv/bin/activate
-python desktop_app.py
-LAUNCHER
-chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
+create_launcher "$APP_NAME" "desktop_app.py" "$APP_DIR/Contents/MacOS/$APP_NAME"
 
 cat > "$APP_DIR/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -68,7 +76,7 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
     <key>CFBundleIdentifier</key>
     <string>com.zara.stock-tracker</string>
     <key>CFBundleVersion</key>
-    <string>4.0</string>
+    <string>4.1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>NSHighResolutionCapable</key>
@@ -77,19 +85,17 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
+# Release quarantine (fix for "Operation not permitted")
+xattr -rd com.apple.quarantine "$APP_DIR" 2>/dev/null || true
+
+
 # 2. Menu Bar Background App
 MENU_APP_NAME="Zara Tracker Menu"
 MENU_APP_DIR="$HOME/Applications/$MENU_APP_NAME.app"
 rm -rf "$MENU_APP_DIR" 2>/dev/null || true
 mkdir -p "$MENU_APP_DIR/Contents/MacOS"
 
-cat > "$MENU_APP_DIR/Contents/MacOS/$MENU_APP_NAME" << LAUNCHER
-#!/bin/bash
-cd "$PROJECT_DIR"
-source .venv/bin/activate
-python menu_bar_app.py
-LAUNCHER
-chmod +x "$MENU_APP_DIR/Contents/MacOS/$MENU_APP_NAME"
+create_launcher "$MENU_APP_NAME" "menu_bar_app.py" "$MENU_APP_DIR/Contents/MacOS/$MENU_APP_NAME"
 
 cat > "$MENU_APP_DIR/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -103,7 +109,7 @@ cat > "$MENU_APP_DIR/Contents/Info.plist" << PLIST
     <key>CFBundleIdentifier</key>
     <string>com.zara.stock-tracker-menu</string>
     <key>CFBundleVersion</key>
-    <string>4.0</string>
+    <string>4.1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>
@@ -114,23 +120,17 @@ cat > "$MENU_APP_DIR/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
+# Release quarantine
+xattr -rd com.apple.quarantine "$MENU_APP_DIR" 2>/dev/null || true
+
 echo ""
 echo "✅ Installation complete!"
 echo ""
-echo "📍 Apps installed:"
-echo "   • $APP_DIR (Full Dashboard)"
-echo "   • $MENU_APP_DIR (Menu Bar 24/7 Tracker)"
+echo "📍 Apps installed in your Applications folder:"
+echo "   • $APP_NAME (Dashboard)"
+echo "   • $MENU_APP_NAME (Menu Bar 24/7)"
 echo ""
-echo "To use:"
-echo "  1. 'Zara Stock Tracker' - Full dashboard app"
-echo "  2. 'Zara Tracker Menu' - Menu bar background tracker (24/7)"
+echo "🚀 To start now, type:"
+echo "   open \"$APP_DIR\""
+echo "   open \"$MENU_APP_DIR\""
 echo ""
-echo "The menu bar app runs in background with a 👗 icon!"
-echo ""
-
-# Ask to launch
-read -p "🚀 Launch the menu bar app now? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    open "$MENU_APP_DIR"
-fi

@@ -232,7 +232,9 @@ if __name__ == "__main__":
         '\n') if p and p != str(os.getpid())]
 
     if pids:
-        print("Menu bar app is already running!")
+        # Already running - open dashboard instead
+        print("Menu bar app is already running! Opening dashboard...")
+        subprocess.run(["open", "http://localhost:8505"])
         sys.exit(0)
 
     # Run the app

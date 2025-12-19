@@ -1,4 +1,4 @@
-"""Zara Stock Tracker - Desktop Application Launcher with improved reliability"""
+"""Zara Stock Tracker - Browser-based Desktop Application Launcher"""
 import subprocess
 import time
 import sys
@@ -6,6 +6,7 @@ import os
 import atexit
 import signal
 import socket
+import webbrowser
 
 # Configuration
 PORT = 8505
@@ -28,31 +29,17 @@ def is_port_open(port: int, host: str = "localhost") -> bool:
         return False
 
 
-def find_python_executable() -> str:
-    """Find the Python executable to use"""
-    # Try virtual environment first
-    venv_python = os.path.join(APP_DIR, ".venv", "bin", "python")
-    if os.path.exists(venv_python):
-        return venv_python
-
-    # Fall back to current Python
-    return sys.executable
-
-
 def find_streamlit_executable() -> str:
     """Find the Streamlit executable to use"""
-    # Try virtual environment first
     venv_streamlit = os.path.join(APP_DIR, ".venv", "bin", "streamlit")
     if os.path.exists(venv_streamlit):
         return venv_streamlit
 
-    # Try to find in PATH
     import shutil
     streamlit_path = shutil.which("streamlit")
     if streamlit_path:
         return streamlit_path
 
-    # Fall back to running as module
     return None
 
 
@@ -62,6 +49,7 @@ def start_streamlit() -> subprocess.Popen:
 
     app_path = os.path.join(APP_DIR, "app.py")
     streamlit_exe = find_streamlit_executable()
+    python_exe = os.path.join(APP_DIR, ".venv", "bin", "python")
 
     if streamlit_exe:
         cmd = [
@@ -72,8 +60,6 @@ def start_streamlit() -> subprocess.Popen:
             "--server.fileWatcherType", "none"
         ]
     else:
-        # Run as Python module
-        python_exe = find_python_executable()
         cmd = [
             python_exe, "-m", "streamlit", "run", app_path,
             "--server.port", str(PORT),
@@ -82,7 +68,6 @@ def start_streamlit() -> subprocess.Popen:
             "--server.fileWatcherType", "none"
         ]
 
-    # Create log file for debugging
     log_path = os.path.join(APP_DIR, "streamlit.log")
     log_file = open(log_path, "w")
 
@@ -97,16 +82,12 @@ def start_streamlit() -> subprocess.Popen:
     return streamlit_process
 
 
-def wait_for_server(max_wait: int = 60) -> bool:
-    """Wait for server to be ready - increased timeout"""
-    print(f"Waiting for server on port {PORT}...")
+def wait_for_server(max_wait: int = 30) -> bool:
+    """Wait for server to be ready"""
     for i in range(max_wait):
         if is_port_open(PORT):
-            print(f"Server ready after {i+1} seconds")
             return True
         time.sleep(1)
-        if i % 10 == 0 and i > 0:
-            print(f"Still waiting... ({i}s)")
     return False
 
 
@@ -116,31 +97,21 @@ def cleanup() -> None:
 
     if streamlit_process:
         try:
-            # Kill the process group
             if os.name != 'nt':
                 os.killpg(os.getpgid(streamlit_process.pid), signal.SIGTERM)
             else:
                 streamlit_process.terminate()
-
-            # Wait for process to end
             streamlit_process.wait(timeout=5)
         except Exception:
             try:
                 streamlit_process.kill()
             except Exception:
                 pass
-
         streamlit_process = None
 
 
-def on_window_closed() -> None:
-    """Handle window close event"""
-    cleanup()
-
-
 def main() -> None:
-    """Main entry point"""
-    # Register cleanup handlers
+    """Main entry point - opens in browser"""
     atexit.register(cleanup)
     signal.signal(signal.SIGTERM, lambda sig, frame: cleanup())
     signal.signal(signal.SIGINT, lambda sig, frame: cleanup())
@@ -152,35 +123,25 @@ def main() -> None:
 
         if not wait_for_server():
             print("Error: Could not start server")
-            print(
-                f"Check {os.path.join(APP_DIR, 'streamlit.log')} for details")
             cleanup()
             sys.exit(1)
 
-    print("Opening application window...")
+    print(f"Opening browser at {URL}...")
+    webbrowser.open(URL)
 
-    # Import webview here to avoid slow startup
-    import webview
+    print("\n" + "="*50)
+    print("Zara Stock Tracker is running!")
+    print(f"Open in browser: {URL}")
+    print("Press Ctrl+C to stop the server")
+    print("="*50 + "\n")
 
-    # Create native window
-    window = webview.create_window(
-        title="Zara Stock Tracker",
-        url=URL,
-        width=1200,
-        height=800,
-        resizable=True,
-        min_size=(800, 600),
-        confirm_close=False
-    )
-
-    # Register close handler
-    window.events.closed += on_window_closed
-
-    # Start the GUI
-    webview.start()
-
-    # Cleanup after window closes
-    cleanup()
+    # Keep running until interrupted
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        cleanup()
 
 
 if __name__ == "__main__":
