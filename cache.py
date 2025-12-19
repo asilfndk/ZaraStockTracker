@@ -1,7 +1,7 @@
 """In-memory cache with TTL support for Zara Stock Tracker"""
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, TypeVar, Generic
+from typing import Any, TypeVar, Generic, Optional
 import threading
 
 T = TypeVar('T')
@@ -33,7 +33,7 @@ class TTLCache:
         self._lock = threading.RLock()
         self._default_ttl = timedelta(seconds=default_ttl_seconds)
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> Optional[Any]:
         """
         Get value from cache if it exists and hasn't expired.
 
@@ -54,7 +54,7 @@ class TTLCache:
 
             return entry.value
 
-    def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
+    def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         """
         Set value in cache with optional custom TTL.
 

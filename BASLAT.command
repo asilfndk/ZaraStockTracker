@@ -8,6 +8,15 @@ echo "   Zara Stock Tracker - Kolay Kurulum"
 echo "=========================================="
 echo ""
 
+# 0. Güncelleme Kontrolü
+echo "🔄 Güncellemeler kontrol ediliyor..."
+git pull > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+    echo "✅ Kod güncellendi."
+else
+    echo "⚠️ Güncelleme yapılamadı (internet olmayabilir), devam ediliyor..."
+fi
+
 # 1. Python Kontrolü
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 bulunamadı!"

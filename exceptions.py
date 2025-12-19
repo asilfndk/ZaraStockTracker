@@ -14,7 +14,7 @@ class ScraperError(ZaraTrackerError):
 class APIError(ScraperError):
     """Error when API request fails"""
 
-    def __init__(self, message: str, status_code: int | None = None):
+    def __init__(self, message: str, status_code: int = None):
         self.status_code = status_code
         super().__init__(
             f"{message} (status: {status_code})" if status_code else message)
