@@ -58,4 +58,4 @@ with tab3:
 
 # Footer
 st.divider()
-st.caption("v6.0")
+st.caption("v6.1")
