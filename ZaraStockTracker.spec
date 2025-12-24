@@ -1,32 +1,47 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""
-PyInstaller spec file for Zara Stock Tracker Menu Bar App
+"""PyInstaller spec for Zara Stock Tracker macOS App"""
 
-Build command:
-    .venv/bin/pyinstaller ZaraStockTracker.spec
-"""
+import os
+import sys
+from pathlib import Path
+
+# Get the directory containing this spec file
+SPEC_DIR = Path(SPECPATH)
 
 block_cipher = None
 
+# Collect all source files
 a = Analysis(
     ['menu_bar_app.py'],
-    pathex=[],
+    pathex=[str(SPEC_DIR), str(SPEC_DIR / 'src')],
     binaries=[],
-    datas=[('icon.png', '.')],
+    datas=[
+        ('src/zara_tracker', 'zara_tracker'),
+        ('icon.png', '.'),
+        ('icon.icns', '.'),
+    ],
     hiddenimports=[
-        'database',
-        'zara_scraper',
-        'notifications',
-        'cache',
-        'config',
-        'exceptions',
         'rumps',
         'sqlalchemy',
-        'sqlalchemy.dialects.sqlite',
-        'sqlalchemy.ext.declarative',
-        'httpx',
+        'sqlalchemy.orm',
+        'sqlalchemy.engine',
         'requests',
-        'certifi',
+        'zara_tracker',
+        'zara_tracker.config',
+        'zara_tracker.models',
+        'zara_tracker.models.product',
+        'zara_tracker.models.settings',
+        'zara_tracker.db',
+        'zara_tracker.db.engine',
+        'zara_tracker.db.tables',
+        'zara_tracker.db.repository',
+        'zara_tracker.scraper',
+        'zara_tracker.scraper.zara',
+        'zara_tracker.scraper.cache',
+        'zara_tracker.services',
+        'zara_tracker.services.product_service',
+        'zara_tracker.services.stock_service',
+        'zara_tracker.services.notification_service',
     ],
     hookspath=[],
     hooksconfig={},
@@ -34,14 +49,10 @@ a = Analysis(
     excludes=[
         'streamlit',
         'pandas',
-        'numpy',
         'matplotlib',
+        'numpy',
         'PIL',
         'tkinter',
-        'PyQt5',
-        'PyQt6',
-        'PySide2',
-        'PySide6',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -61,12 +72,13 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='icon.icns',
 )
 
 coll = COLLECT(
@@ -84,14 +96,18 @@ app = BUNDLE(
     coll,
     name='Zara Stock Tracker.app',
     icon='icon.icns',
-    bundle_identifier='com.zarastock.menubar',
+    bundle_identifier='com.zarastocktracker.app',
     info_plist={
         'CFBundleName': 'Zara Stock Tracker',
         'CFBundleDisplayName': 'Zara Stock Tracker',
-        'CFBundleVersion': '5.0.0',
-        'CFBundleShortVersionString': '5.0.0',
-        'LSUIElement': True,  # Hide from Dock (menu bar only)
-        'NSHighResolutionCapable': True,
+        'CFBundleExecutable': 'Zara Stock Tracker',
+        'CFBundleIdentifier': 'com.zarastocktracker.app',
+        'CFBundleVersion': '6.0.0',
+        'CFBundleShortVersionString': '6.0',
         'LSMinimumSystemVersion': '10.13.0',
+        'LSUIElement': True,  # Hide from Dock, menu bar app only
+        'NSHighResolutionCapable': True,
+        'NSAppleEventsUsageDescription': 'Zara Stock Tracker needs to send notifications.',
+        'LSBackgroundOnly': False,
     },
 )

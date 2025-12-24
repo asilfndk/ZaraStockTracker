@@ -1,5 +1,3 @@
-"""
-Zara Stock Tracker - A professional stock monitoring application
-"""
-__version__ = "5.1.0"
-__author__ = "asilfndk"
+"""Zara Stock Tracker - Monitor product availability with notifications."""
+
+__version__ = "6.0.0"

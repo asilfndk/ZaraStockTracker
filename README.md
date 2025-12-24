@@ -2,26 +2,26 @@
 
 A macOS application that monitors **Zara** product stock in real-time with size-specific tracking and instant notifications.
 
-![Version](https://img.shields.io/badge/version-5.1-purple)
+![Version](https://img.shields.io/badge/version-6.0-purple)
 ![Platform](https://img.shields.io/badge/platform-macOS-blue)
-![Python](https://img.shields.io/badge/python-3.9+-green)
+![Python](https://img.shields.io/badge/python-3.11-green)
 
 ## ✨ Features
 
 - 🎯 **Size Tracking** - Monitor specific sizes and get alerted when they're back in stock
-- 📊 **Price History** - Track price changes over time with charts
+- 📊 **Price History** - Track price changes over time
 - 🔔 **Smart Notifications** - macOS native + optional Telegram alerts
 - 🖥️ **Menu Bar App** - Runs 24/7 in the background
 - 🌍 **Multi-Region** - Support for 7 countries (TR, US, UK, DE, FR, ES, IT)
 - 💾 **Auto Backup** - Database backup with automatic retention
-- ⚡ **Smart Caching** - TTL cache to reduce API calls
+- ⚡ **Clean Architecture** - Modular, testable, maintainable code
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - macOS 10.13+
-- Python 3.9+
+- Python 3.11+
 
 ### Installation
 
@@ -31,7 +31,7 @@ git clone https://github.com/asilfndk/ZaraStok.git
 cd ZaraStok
 
 # Create virtual environment
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
@@ -46,54 +46,34 @@ streamlit run app.py
 The menu bar app runs in the background and monitors stock 24/7.
 
 ```bash
-# Run from source
 python menu_bar_app.py
-
-# Or build standalone app
-pip install pyinstaller
-pyinstaller ZaraStockTracker.spec --noconfirm
-
-# App location: dist/Zara Stock Tracker.app
 ```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and customize:
-
-```bash
-cp .env.example .env
-```
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `ZARA_COUNTRY` | `tr` | Country code (tr, us, uk, de, fr, es, it) |
-| `ZARA_LANGUAGE` | `en` | Language code |
-| `ZARA_CHECK_INTERVAL` | `300` | Check interval in seconds |
-| `ZARA_TELEGRAM_ENABLED` | `false` | Enable Telegram notifications |
-
-### UI Settings
-
-All settings can be configured from the **Settings** tab:
-- 🌍 **Region** - Select country
-- 📱 **Telegram** - Configure notifications
-- 💾 **Backup** - Database backup/restore
 
 ## 📁 Project Structure
 
 ```
 ZaraStok/
-├── app.py                    # Streamlit dashboard
-├── menu_bar_app.py           # macOS menu bar app
-├── scraper.py                # Scraper router
-├── zara_scraper.py           # Zara API scraper
-├── database.py               # SQLite + backup
-├── notifications.py          # macOS + Telegram
-├── config.py                 # Configuration
-├── cache.py                  # TTL cache
-├── ZaraStockTracker.spec     # PyInstaller config
-└── icon.icns                 # App icon
+├── app.py                    # Streamlit entry (~40 lines)
+├── menu_bar_app.py           # Menu bar entry
+├── src/
+│   └── zara_tracker/
+│       ├── config.py         # Configuration
+│       ├── models/           # Data models
+│       ├── db/               # Database layer
+│       │   ├── engine.py     # Connection management
+│       │   ├── tables.py     # SQLAlchemy models
+│       │   └── repository.py # CRUD operations
+│       ├── scraper/          # Web scraping
+│       │   ├── zara.py       # Zara API scraper
+│       │   └── cache.py      # Response cache
+│       ├── services/         # Business logic
+│       │   ├── product_service.py
+│       │   ├── stock_service.py
+│       │   └── notification_service.py
+│       └── ui/               # Streamlit components
+│           ├── components.py # Reusable UI
+│           └── pages/        # Page modules
+└── tests/                    # Unit tests
 ```
 
 ## 🌍 Supported Regions
@@ -110,16 +90,12 @@ ZaraStok/
 
 ## 📜 Changelog
 
-### v5.1 (Latest)
-- Simplified to Zara-only support
-- Improved stability and performance
-- Multi-region support
-- Telegram notifications
-- Database backup
-
-### v5.0
-- Multi-brand support
-- Menu bar app improvements
+### v6.0 (Latest)
+- Complete clean architecture rebuild
+- Context manager pattern for database sessions
+- Modular service layer
+- Minimal entry points
+- Improved error handling
 
 ## 📄 License
 

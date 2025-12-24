@@ -1,162 +1,138 @@
-"""
-Product Service - Business logic for product management.
-"""
-import logging
+"""Product management service."""
+
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
-from sqlalchemy.exc import OperationalError
+from ..db import get_db, ProductRepository, StockRepository, PriceHistoryRepository
+from ..db.tables import ProductTable
+from ..scraper import ZaraScraper
+from ..models.product import ProductInfo
 
-logger = logging.getLogger(__name__)
+
+@dataclass
+class AddProductResult:
+    """Result of adding a product."""
+    success: bool
+    message: str
+    product_id: Optional[int] = None
+    desired_size_in_stock: Optional[bool] = None
 
 
 class ProductService:
-    """Service for product-related business logic."""
+    """Service for product management."""
 
-    def __init__(self, session_factory, scraper_factory):
-        """
-        Initialize ProductService.
-
-        Args:
-            session_factory: Callable that returns a database session
-            scraper_factory: Callable(url, country, language) that returns a scraper
-        """
-        self._session_factory = session_factory
-        self._scraper_factory = scraper_factory
-
+    @staticmethod
     def add_product(
-        self,
         url: str,
-        desired_size: Optional[str] = None,
-        country: str = "tr",
+        desired_size: str,
+        country_code: str = "tr",
         language: str = "en"
-    ) -> Tuple[bool, str, Optional[bool]]:
+    ) -> AddProductResult:
         """
         Add a new product to tracking.
 
         Args:
-            url: Product URL
-            desired_size: Size to track (optional)
-            country: Country code
+            url: Zara product URL
+            desired_size: Size to track
+            country_code: Region code
             language: Language code
 
         Returns:
-            Tuple of (success, message, desired_size_in_stock)
+            AddProductResult with success status and message
         """
-        # Import here to avoid circular imports
-        from zara_tracker.core.repository import (
-            ProductRepository, StockRepository, PriceHistoryRepository, get_session
-        )
-        from zara_tracker.core.models import ZaraProduct, ZaraStockStatus
+        # Validate URL
+        if not ZaraScraper.is_supported_url(url):
+            return AddProductResult(False, "Only Zara URLs are supported")
 
-        session = get_session()
-
-        try:
-            # Check if already exists
-            existing = ProductRepository.get_by_url(session, url)
+        # Check if already exists
+        with get_db() as db:
+            existing = ProductRepository.get_by_url(db, url)
             if existing:
-                session.close()
-                return False, "This product is already being tracked!", None
+                return AddProductResult(False, "This product is already being tracked")
 
-            # Fetch product info
-            try:
-                scraper = self._scraper_factory(url, country, language)
-                result = scraper.get_stock_status(url)
-            except Exception as e:
-                session.close()
-                return False, f"Error fetching product: {str(e)}", None
+        # Fetch product info
+        scraper = ZaraScraper(country_code, language)
+        product_info = scraper.get_product_info(url)
 
-            if not result:
-                session.close()
-                return False, "Could not get product info. Check the URL.", None
+        if not product_info:
+            return AddProductResult(False, "Could not fetch product info. Check the URL.")
 
-            # Validate desired size
-            if desired_size:
-                size_exists = any(
-                    s.size.upper() == desired_size.upper()
-                    for s in result.sizes
-                )
-                if not size_exists:
-                    available = [s.size for s in result.sizes]
-                    session.close()
-                    return False, f"Size '{desired_size}' not found. Available: {', '.join(available)}", None
+        # Validate size exists
+        size_upper = desired_size.upper()
+        size_found = None
+        for size in product_info.sizes:
+            if size.size.upper() == size_upper or size_upper in size.size.upper():
+                size_found = size
+                break
 
-            # Create product
-            product = ZaraProduct(
-                url=url,
-                product_name=result.name,
-                product_id=result.product_id,
-                price=result.price,
-                old_price=result.old_price,
-                discount=result.discount,
-                color=result.color,
-                image_url=result.image_url,
-                desired_size=desired_size.upper() if desired_size else None,
-                last_check=datetime.now()
+        if not size_found:
+            available = [s.size for s in product_info.sizes]
+            return AddProductResult(
+                False,
+                f"Size '{desired_size}' not found. Available: {', '.join(available)}"
             )
-            session.add(product)
-            session.flush()
 
-            # Add price history
-            PriceHistoryRepository.add_if_changed(
-                product.id,
-                result.price,
-                result.old_price,
-                result.discount
+        # Save to database
+        with get_db() as db:
+            product = ProductRepository.create(
+                db,
+                url=url,
+                product_name=product_info.name,
+                product_id=product_info.product_id,
+                price=product_info.price,
+                old_price=product_info.old_price,
+                discount=product_info.discount,
+                color=product_info.color,
+                image_url=product_info.image_url,
+                desired_size=size_found.size,
+                last_check=datetime.now()
             )
 
             # Add stock statuses
-            for size in result.sizes:
-                stock_status = ZaraStockStatus(
-                    zara_product_id=product.id,
+            for size in product_info.sizes:
+                StockRepository.create(
+                    db,
+                    product_id=product.id,
                     size=size.size,
-                    in_stock=1 if size.in_stock else 0,
-                    stock_status=size.stock_status,
-                    last_updated=datetime.now()
+                    in_stock=size.in_stock,
+                    stock_status=size.stock_status
                 )
-                session.add(stock_status)
 
-            session.commit()
+            # Add initial price history
+            PriceHistoryRepository.add(
+                db,
+                product.id,
+                product_info.price,
+                product_info.old_price,
+                product_info.discount
+            )
 
-            # Check if desired size is in stock
-            desired_in_stock = None
-            if desired_size:
-                for size in result.sizes:
-                    if size.size.upper() == desired_size.upper():
-                        desired_in_stock = size.in_stock
-                        break
+            return AddProductResult(
+                success=True,
+                message=f"'{product_info.name}' added to tracking!",
+                product_id=product.id,
+                desired_size_in_stock=size_found.in_stock
+            )
 
-            session.close()
-            return True, f"'{result.name}' added to tracking list!", desired_in_stock
-
-        except OperationalError as e:
-            session.rollback()
-            session.close()
-            if "database is locked" in str(e):
-                return False, "Database is busy. Please try again.", None
-            raise
-
-    def delete_product(self, product_id: int) -> bool:
+    @staticmethod
+    def delete_product(product_id: int) -> bool:
         """Delete a product from tracking."""
-        from zara_tracker.core.repository import ProductRepository, get_session
-
-        session = get_session()
-        try:
-            product = ProductRepository.get_by_id(session, product_id)
+        with get_db() as db:
+            product = ProductRepository.get_by_id(db, product_id)
             if product:
-                ProductRepository.delete(session, product)
-                session.commit()
+                ProductRepository.delete(db, product)
                 return True
             return False
-        finally:
-            session.close()
 
-    def get_all_active(self) -> List:
-        """Get all active products."""
-        from zara_tracker.core.repository import ProductRepository, get_session
+    @staticmethod
+    def get_all_active() -> List[ProductTable]:
+        """Get all active products with their stock statuses."""
+        with get_db() as db:
+            return ProductRepository.get_all_active(db)
 
-        session = get_session()
-        try:
-            return ProductRepository.get_all_active(session)
-        finally:
-            session.close()
+    @staticmethod
+    def get_product_count() -> int:
+        """Get count of active products."""
+        with get_db() as db:
+            return ProductRepository.count_active(db)
