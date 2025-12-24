@@ -1,32 +1,39 @@
 [project]
-name = "zarastok"
-version = "4.0.0"
-description = "Zara Stock Tracker - Monitor product availability with size-specific tracking and alerts"
+name = "zara-stock-tracker"
+version = "5.1.0"
+description = "Zara Stock Tracker - Monitor product availability with notifications"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
-    "httpx>=0.28.1",
-    "pandas>=2.3.3",
-    "sqlalchemy>=2.0.44",
-    "streamlit>=1.51.0",
-    "pywebview>=5.0",
+    "pandas>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "streamlit>=1.30.0",
+    "rumps>=0.4.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 addopts = "-v --tb=short"
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]

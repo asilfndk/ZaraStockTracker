@@ -27,3 +27,6 @@ wheels/
 .env
 .env.local
 .env.*.local
+# PyInstaller build artifacts
+build/
+dist/

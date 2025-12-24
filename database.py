@@ -1,4 +1,7 @@
-"""Database models and connection"""
+"""Database models and connection with backup support"""
+import functools
+import time
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import event
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -6,10 +9,16 @@ from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from typing import Optional, List
 import os
+import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Database connection - store in user's home directory for write access
 DB_DIR = os.path.join(os.path.expanduser("~"), ".zara_stock_tracker")
+BACKUP_DIR = os.path.join(DB_DIR, "backups")
 os.makedirs(DB_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
 DATABASE_PATH = os.path.join(DB_DIR, "zara_stock.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
@@ -17,7 +26,8 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 # Database setup with better concurrency
 engine = create_engine(
     DATABASE_URL,
-    connect_args={'timeout': 30},  # Wait up to 30s instead of default 5s
+    # Increased timeout for Playwright operations
+    connect_args={'timeout': 60, 'check_same_thread': False},
     echo=False
 )
 
@@ -100,6 +110,33 @@ class UserSettings(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
+def retry_on_lock(max_retries=10, initial_delay=0.5):
+    """Retry operation if database is locked with exponential backoff"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for i in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    if "database is locked" in str(e):
+                        if i == max_retries - 1:
+                            logger.error(
+                                f"Database locked after {max_retries} retries in {func.__name__}")
+                            raise
+                        logger.debug(
+                            f"Database locked, retrying in {delay}s...")
+                        time.sleep(delay)
+                        # Exponential backoff, max 5s
+                        delay = min(delay * 1.5, 5.0)
+                    else:
+                        raise
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def init_db():
     """Create database tables"""
     Base.metadata.create_all(bind=engine)
@@ -110,6 +147,7 @@ def get_session():
     return SessionLocal()
 
 
+@retry_on_lock()
 def add_price_history(product_id: int, price: float, old_price: Optional[float] = None, discount: Optional[str] = None) -> None:
     """Add price history record (only if price changed)"""
     session = get_session()
@@ -153,6 +191,7 @@ def get_setting(key: str, default: str = "") -> str:
         session.close()
 
 
+@retry_on_lock()
 def set_setting(key: str, value: str) -> None:
     """Set a user setting"""
     session = get_session()
@@ -168,3 +207,103 @@ def set_setting(key: str, value: str) -> None:
         session.commit()
     finally:
         session.close()
+
+
+def backup_database(max_backups: int = 5) -> Optional[str]:
+    """
+    Create a backup of the database.
+
+    Args:
+        max_backups: Maximum number of backups to keep
+
+    Returns:
+        Path to backup file or None if failed
+    """
+    if not os.path.exists(DATABASE_PATH):
+        logger.warning("Database file does not exist, nothing to backup")
+        return None
+
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"zara_stock_backup_{timestamp}.db"
+        backup_path = os.path.join(BACKUP_DIR, backup_filename)
+
+        # Copy only, no lock risk mostly
+        shutil.copy2(DATABASE_PATH, backup_path)
+        logger.info(f"Database backed up to: {backup_path}")
+
+        # Cleanup old backups
+        _cleanup_old_backups(max_backups)
+
+        return backup_path
+    except Exception as e:
+        logger.error(f"Backup failed: {e}")
+        return None
+
+
+def _cleanup_old_backups(max_backups: int) -> None:
+    """Remove old backups keeping only the most recent ones"""
+    try:
+        backups = sorted([
+            f for f in os.listdir(BACKUP_DIR)
+            if f.startswith("zara_stock_backup_") and f.endswith(".db")
+        ])
+
+        while len(backups) > max_backups:
+            old_backup = backups.pop(0)
+            os.remove(os.path.join(BACKUP_DIR, old_backup))
+            logger.debug(f"Removed old backup: {old_backup}")
+    except Exception as e:
+        logger.warning(f"Backup cleanup failed: {e}")
+
+
+def restore_database(backup_path: str) -> bool:
+    """
+    Restore database from a backup file.
+
+    Args:
+        backup_path: Path to backup file
+
+    Returns:
+        True if successful
+    """
+    if not os.path.exists(backup_path):
+        logger.error(f"Backup file not found: {backup_path}")
+        return False
+
+    try:
+        # Create safety backup first
+        if os.path.exists(DATABASE_PATH):
+            safety_backup = DATABASE_PATH + ".before_restore"
+            shutil.copy2(DATABASE_PATH, safety_backup)
+
+        shutil.copy2(backup_path, DATABASE_PATH)
+        logger.info(f"Database restored from: {backup_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Restore failed: {e}")
+        return False
+
+
+def list_backups() -> List[dict]:
+    """
+    List available database backups.
+
+    Returns:
+        List of backup info dicts with path, filename, created_at, size
+    """
+    backups = []
+    try:
+        for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if f.startswith("zara_stock_backup_") and f.endswith(".db"):
+                path = os.path.join(BACKUP_DIR, f)
+                stat = os.stat(path)
+                backups.append({
+                    "path": path,
+                    "filename": f,
+                    "created_at": datetime.fromtimestamp(stat.st_mtime),
+                    "size_bytes": stat.st_size
+                })
+    except Exception as e:
+        logger.warning(f"Failed to list backups: {e}")
+    return backups

@@ -1,5 +1,6 @@
-"""Zara Stock Tracker - Size tracking with sound alerts, price history, and push notifications"""
+"""Zara Stock Tracker - Multi-brand size tracking with alerts and price history"""
 import streamlit as st
+import base64
 import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime
@@ -8,13 +9,13 @@ from database import (
     init_db, get_session, ZaraProduct, ZaraStockStatus,
     get_setting, set_setting, add_price_history, get_price_history
 )
-from zara_scraper import ZaraScraper
+from scraper import get_scraper_for_url, is_supported_url, get_brand_from_url, get_supported_brands
 from notifications import send_notification
 
 # Page configuration
 st.set_page_config(
     page_title="Zara Stock Tracker",
-    page_icon="👗",
+    page_icon="🛍️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -154,13 +155,17 @@ def update_all_products():
         session.close()
         return 0, 0, []
 
-    scraper = ZaraScraper()
+    # Use region from settings
+    country = get_setting("country_code", "tr")
+    language = get_setting("language", "en")
     updated = 0
     changes = 0
     size_alerts = []
 
     for product in products:
         try:
+            # Get appropriate scraper for brand
+            scraper = get_scraper_for_url(product.url, country, language)
             result = scraper.get_stock_status(product.url)
 
             if result:
@@ -215,6 +220,14 @@ def update_all_products():
 
 def add_product(url: str, desired_size: str = None):
     """Add new product to tracking"""
+    import time
+    from sqlalchemy.exc import OperationalError
+
+    # Validate URL is from supported brand
+    if not is_supported_url(url):
+        supported = ", ".join(get_supported_brands())
+        return False, f"Unsupported URL. Supported brands: {supported}", None
+
     session = get_session()
 
     existing = session.query(ZaraProduct).filter(
@@ -223,8 +236,19 @@ def add_product(url: str, desired_size: str = None):
         session.close()
         return False, "This product is already in tracking list!", None
 
-    scraper = ZaraScraper()
-    result = scraper.get_stock_status(url)
+    # Use region from settings and get appropriate scraper
+    country = get_setting("country_code", "tr")
+    language = get_setting("language", "en")
+
+    try:
+        scraper = get_scraper_for_url(url, country, language)
+        result = scraper.get_stock_status(url)
+    except RuntimeError as e:
+        session.close()
+        return False, str(e), None
+    except Exception as e:
+        session.close()
+        return False, f"Error fetching product: {str(e)}", None
 
     if not result:
         session.close()
@@ -238,36 +262,53 @@ def add_product(url: str, desired_size: str = None):
             session.close()
             return False, f"'{desired_size}' size not available! Available sizes: {', '.join(available_sizes)}", None
 
-    new_product = ZaraProduct(
-        url=url,
-        product_name=result.name,
-        product_id=result.product_id,
-        price=result.price,
-        old_price=result.old_price,
-        discount=result.discount,
-        color=result.color,
-        image_url=result.image_url,
-        desired_size=desired_size.upper() if desired_size else None,
-        last_check=datetime.now()
-    )
-    session.add(new_product)
-    session.flush()
+    # Retry logic for database operations
+    max_retries = 10
+    retry_delay = 0.5
 
-    # Record initial price history
-    add_price_history(new_product.id, result.price,
-                      result.old_price, result.discount)
+    for attempt in range(max_retries):
+        try:
+            new_product = ZaraProduct(
+                url=url,
+                product_name=result.name,
+                product_id=result.product_id,
+                price=result.price,
+                old_price=result.old_price,
+                discount=result.discount,
+                color=result.color,
+                image_url=result.image_url,
+                desired_size=desired_size.upper() if desired_size else None,
+                last_check=datetime.now()
+            )
+            session.add(new_product)
+            session.flush()
 
-    for size in result.sizes:
-        stock_status = ZaraStockStatus(
-            zara_product_id=new_product.id,
-            size=size.size,
-            in_stock=1 if size.in_stock else 0,
-            stock_status=size.stock_status,
-            last_updated=datetime.now()
-        )
-        session.add(stock_status)
+            # Record initial price history
+            add_price_history(new_product.id, result.price,
+                              result.old_price, result.discount)
 
-    session.commit()
+            for size in result.sizes:
+                stock_status = ZaraStockStatus(
+                    zara_product_id=new_product.id,
+                    size=size.size,
+                    in_stock=1 if size.in_stock else 0,
+                    stock_status=size.stock_status,
+                    last_updated=datetime.now()
+                )
+                session.add(stock_status)
+
+            session.commit()
+            break  # Success, exit retry loop
+
+        except OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                session.rollback()
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 1.5, 5.0)
+                continue
+            else:
+                session.close()
+                return False, "Database is busy. Please try again.", None
 
     desired_in_stock = None
     if desired_size:
@@ -292,11 +333,27 @@ def delete_product(product_id: int):
 
 
 # Header with sound toggle
-col_title, col_sound = st.columns([6, 1])
-with col_title:
-    st.title("👗 Zara Stock Tracker")
+col_header, col_sound = st.columns([6, 1])
+with col_header:
+    try:
+        with open("icon.png", "rb") as f:
+            img_data = base64.b64encode(f.read()).decode()
+
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; gap: 15px; padding-bottom: 10px;">
+                <img src="data:image/png;base64,{img_data}" width="60" style="border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <h1 style="margin: 0; padding: 0; font-size: 2.5rem;">Zara Stock Tracker</h1>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception:
+        st.title("🛍️ Zara Stock Tracker")
+
 with col_sound:
     st.write("")
+    st.write("")  # Add spacing to align button
     if st.session_state.sound_enabled:
         if st.button("🔊", help="Turn off sound", key="sound_toggle"):
             toggle_sound()
@@ -306,7 +363,8 @@ with col_sound:
             toggle_sound()
             st.rerun()
 
-st.caption("Desired size tracking • Sound alerts • Auto-refresh every minute")
+st.caption(
+    "🎯 Track your desired Zara sizes • 🔔 Sound & push alerts • ⏱️ Auto-refresh")
 
 # Get product count
 session_count = get_session()
@@ -465,19 +523,25 @@ with tab1:
                 st.divider()
     else:
         st.info(
-            "👆 No products being tracked. Add a Zara product link from 'Add Product' tab.")
+            "👆 No products being tracked. Add a product link from 'Add Product' tab.")
 
     session.close()
 
 
 with tab2:
     st.subheader("➕ Add New Product")
-    st.write("Paste the Zara product page URL and enter the size you want to track:")
+
+    # Get supported brands dynamically
+    supported_brands = get_supported_brands()
+    brands_text = ", ".join(supported_brands)
+
+    st.write(
+        f"Paste a product URL from supported brands ({brands_text}) and enter the size:")
 
     url_input = st.text_input(
-        "🔗 Zara Product URL",
+        "🔗 Product URL",
         placeholder="https://www.zara.com/tr/en/product-name-p12345678.html?v1=...",
-        help="URL must contain v1 parameter"
+        help="Paste product URL from Zara"
     )
 
     col1, col2 = st.columns([1, 1])
@@ -494,15 +558,15 @@ with tab2:
         st.caption("💡 You'll get a sound alert when this size comes in stock!")
 
     st.caption(
-        "💡 URL example: `https://www.zara.com/tr/en/animal-print-jacket-p09076217.html?v1=483037454`")
+        "💡 URL example: `https://www.zara.com/tr/en/dress-p09076217.html?v1=483037454`")
+    st.caption(
+        f"🏪 Supported: {brands_text}")
 
     if st.button("➕ Add Product", type="primary", use_container_width=True):
         if url_input:
-            if "zara.com" not in url_input:
-                st.error("❌ Enter a valid Zara URL!")
-            elif "v1=" not in url_input:
+            if not is_supported_url(url_input):
                 st.error(
-                    "❌ v1 parameter not found in URL. Copy the full URL from product page.")
+                    f"❌ Unsupported URL! Supported brands: {brands_text}")
             elif not size_input:
                 st.error("❌ Please enter the size you want to track!")
             else:
@@ -533,7 +597,16 @@ with tab2:
 with tab3:
     st.subheader("⚙️ Settings")
 
-    col1, col2 = st.columns(2)
+    # Initialize settings in session state
+    if 'country_code' not in st.session_state:
+        st.session_state.country_code = get_setting("country_code", "tr")
+    if 'language' not in st.session_state:
+        st.session_state.language = get_setting("language", "en")
+    if 'telegram_enabled' not in st.session_state:
+        st.session_state.telegram_enabled = get_setting(
+            "telegram_enabled", "false") == "true"
+
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown("#### 🔔 Notifications")
@@ -556,6 +629,36 @@ with tab3:
         )
         if sound_enabled != st.session_state.sound_enabled:
             st.session_state.sound_enabled = sound_enabled
+
+        st.markdown("---")
+        st.markdown("##### 📱 Telegram")
+
+        telegram_enabled = st.toggle(
+            "Enable Telegram",
+            value=st.session_state.telegram_enabled,
+            help="Send notifications via Telegram"
+        )
+        if telegram_enabled != st.session_state.telegram_enabled:
+            st.session_state.telegram_enabled = telegram_enabled
+            set_setting("telegram_enabled",
+                        "true" if telegram_enabled else "false")
+
+        if telegram_enabled:
+            bot_token = st.text_input(
+                "Bot Token",
+                value=get_setting("telegram_bot_token", ""),
+                type="password",
+                help="From @BotFather"
+            )
+            chat_id = st.text_input(
+                "Chat ID",
+                value=get_setting("telegram_chat_id", ""),
+                help="From @userinfobot"
+            )
+            if st.button("💾 Save Telegram", use_container_width=True):
+                set_setting("telegram_bot_token", bot_token)
+                set_setting("telegram_chat_id", chat_id)
+                st.success("✅ Telegram settings saved!")
 
     with col2:
         st.markdown("#### ⏱️ Auto-Refresh")
@@ -584,9 +687,76 @@ with tab3:
         if auto_enabled != st.session_state.auto_refresh:
             st.session_state.auto_refresh = auto_enabled
 
+        st.markdown("---")
+        st.markdown("##### 🌍 Region")
+
+        regions = {
+            "tr": "🇹🇷 Turkey",
+            "us": "🇺🇸 United States",
+            "uk": "🇬🇧 United Kingdom",
+            "de": "🇩🇪 Germany",
+            "fr": "🇫🇷 France",
+            "es": "🇪🇸 Spain",
+            "it": "🇮🇹 Italy"
+        }
+
+        current_country = st.session_state.country_code
+        selected_country = st.selectbox(
+            "Country",
+            options=list(regions.keys()),
+            format_func=lambda x: regions[x],
+            index=list(regions.keys()).index(
+                current_country) if current_country in regions else 0
+        )
+
+        if selected_country != st.session_state.country_code:
+            st.session_state.country_code = selected_country
+            set_setting("country_code", selected_country)
+            st.success("✅ Region updated!")
+            st.info("ℹ️ New products will use this region")
+
+    with col3:
+        st.markdown("#### 💾 Database")
+
+        # Import backup functions
+        from database import backup_database, list_backups, restore_database, BACKUP_DIR
+
+        if st.button("📦 Create Backup", use_container_width=True):
+            backup_path = backup_database()
+            if backup_path:
+                st.success(f"✅ Backup created!")
+            else:
+                st.error("❌ Backup failed")
+
+        st.markdown("---")
+        st.markdown("##### 📋 Backups")
+
+        backups = list_backups()
+        if backups:
+            for i, backup in enumerate(backups[:5]):  # Show last 5
+                col_name, col_size, col_restore = st.columns([3, 1, 1])
+                with col_name:
+                    st.caption(backup['created_at'].strftime('%Y-%m-%d %H:%M'))
+                with col_size:
+                    size_mb = backup['size_bytes'] / 1024 / 1024
+                    st.caption(f"{size_mb:.1f}MB")
+                with col_restore:
+                    if st.button("🔄", key=f"restore_{i}", help="Restore this backup"):
+                        if restore_database(backup['path']):
+                            st.success("✅ Restored!")
+                            st.rerun()
+        else:
+            st.caption("No backups yet")
+
+        st.markdown("---")
+        st.caption(f"📁 Backups: `~/.zara_stock_tracker/backups/`")
+
     st.divider()
+
+    # Version info with region
+    region_name = regions.get(st.session_state.country_code, "Unknown")
     st.markdown(
-        "**Zara Stock Tracker v4.0** - Price history, push notifications, wishlist import")
+        f"**Zara Stock Tracker v5.0** - {region_name} • Telegram • Backup")
 
 # Footer
 st.divider()
@@ -595,7 +765,7 @@ with col2:
     sound_status = "🔊 Sound on" if st.session_state.sound_enabled else "🔇 Sound off"
     push_status = "🔔 Push on" if st.session_state.push_notifications else "🔕 Push off"
     st.caption(
-        f"{sound_status} • {push_status} • v4.0 • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        f"{sound_status} • {push_status} • v5.0 • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
 
 # Render pending alarm sound
 render_alarm_sound()
