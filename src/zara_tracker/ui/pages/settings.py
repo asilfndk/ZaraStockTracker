@@ -24,7 +24,7 @@ def render() -> None:
         _render_backup()
 
     st.divider()
-    st.markdown("**Zara Stock Tracker v6.0** - Clean Architecture Edition")
+    st.markdown("**Zara Stock Tracker v6.0**")
 
 
 def _render_notifications() -> None:

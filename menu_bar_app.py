@@ -147,7 +147,23 @@ class ZaraStockTrackerApp(rumps.App):
             time.sleep(self.check_interval)
 
     def open_dashboard(self, _):
-        """Open Streamlit dashboard."""
+        """Open native dashboard window."""
+        try:
+            from zara_tracker.ui.native_dashboard import NativeDashboard, PYOBJC_AVAILABLE
+
+            if PYOBJC_AVAILABLE:
+                if NativeDashboard.show():
+                    return
+
+            # Fallback to Streamlit if native dashboard fails
+            self._open_streamlit_dashboard()
+
+        except Exception as e:
+            print(f"Dashboard error: {e}")
+            self._open_streamlit_dashboard()
+
+    def _open_streamlit_dashboard(self):
+        """Fallback: Open Streamlit dashboard."""
         try:
             import urllib.request
             try:
@@ -172,7 +188,7 @@ class ZaraStockTrackerApp(rumps.App):
                     streamlit_path = result.stdout.strip()
                 else:
                     rumps.notification("Zara Stock Tracker",
-                                       "Error", "Streamlit not found")
+                                       "Error", "Streamlit not found. Use native dashboard.")
                     return
 
             app_path = os.path.join(APP_DIR, "app.py")
