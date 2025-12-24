@@ -191,7 +191,7 @@ def send_notification(
     use_telegram: bool = True
 ) -> bool:
     """Send notification using default service."""
-    from zara_tracker.core.repository import SettingsRepository
+    from ..core.repository import SettingsRepository
 
     service = NotificationService(
         telegram_enabled=SettingsRepository.get(

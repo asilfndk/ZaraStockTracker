@@ -1,5 +1,5 @@
 """Tests for custom exceptions"""
-from exceptions import (
+from zara_tracker.exceptions import (
     ZaraTrackerError,
     ScraperError,
     APIError,
@@ -15,8 +15,10 @@ import pytest
 import sys
 import os
 
-# Add parent directory to path
+# Add parent and src directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 
 class TestExceptionHierarchy:

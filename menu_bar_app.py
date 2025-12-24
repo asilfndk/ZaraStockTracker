@@ -2,23 +2,24 @@
 Zara Stock Tracker - Menu Bar Background Service
 Runs in background and monitors stock 24/7 with menu bar icon
 """
-from database import (
+from zara_tracker.services import send_notification
+from zara_tracker.core import (
     init_db, get_session, ZaraProduct, ZaraStockStatus,
-    get_setting, set_setting, add_price_history
+    get_setting, set_setting, add_price_history,
+    get_scraper_for_url
 )
-from scraper import get_scraper_for_url
-from notifications import send_notification
-import rumps
-import threading
-import time
-from datetime import datetime
 import subprocess
+from datetime import datetime
+import time
+import threading
+import rumps
 import os
 import sys
 
-# Add project directory to path
+# Add project directory and src to path BEFORE importing zara_tracker
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, APP_DIR)
+sys.path.insert(0, os.path.join(APP_DIR, "src"))
 
 
 class ZaraStockTrackerApp(rumps.App):
@@ -36,7 +37,7 @@ class ZaraStockTrackerApp(rumps.App):
 
         super().__init__(
             name="Zara Stock Tracker",
-            title=None if icon_exists else "�️",
+            title=None if icon_exists else "🛍️",
             quit_button=None  # Custom quit button
         )
 
@@ -244,10 +245,6 @@ class ZaraStockTrackerApp(rumps.App):
 
             self.update_menu_stats()
 
-            # Notification for alerts (no icon change)
-            if alerts:
-                pass  # Notifications already sent above
-
         except Exception as e:
             print(f"Check error: {e}")
 
@@ -320,9 +317,14 @@ class ZaraStockTrackerApp(rumps.App):
 
             app_path = os.path.join(project_dir, "app.py")
 
+            # Set PYTHONPATH for streamlit
+            env = os.environ.copy()
+            env["PYTHONPATH"] = os.path.join(project_dir, "src")
+
             self.streamlit_process = subprocess.Popen(
                 [streamlit_path, "run", app_path, "--server.port", "8505"],
                 cwd=project_dir,
+                env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )

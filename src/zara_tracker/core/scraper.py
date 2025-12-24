@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple
 from dataclasses import dataclass
 from functools import wraps
 
-from cache import api_cache
+from .cache import api_cache
 
 # Configure logging
 logger = logging.getLogger(__name__)

@@ -1,12 +1,14 @@
 """Tests for cache module"""
-from cache import TTLCache, CacheEntry, api_cache
+from zara_tracker.core.cache import TTLCache, CacheEntry, api_cache
 import pytest
 import time
 import sys
 import os
 
-# Add parent directory to path
+# Add parent and src directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 
 class TestCacheEntry:

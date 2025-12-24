@@ -1,16 +1,22 @@
-"""Zara Stock Tracker - Multi-brand size tracking with alerts and price history"""
-import streamlit as st
-import base64
-import streamlit.components.v1 as components
-import pandas as pd
-from datetime import datetime
-import time
-from database import (
+"""Zara Stock Tracker - Size tracking with alerts and price history"""
+from zara_tracker.services import send_notification
+from zara_tracker.core import (
     init_db, get_session, ZaraProduct, ZaraStockStatus,
-    get_setting, set_setting, add_price_history, get_price_history
+    get_setting, set_setting, add_price_history, get_price_history,
+    get_scraper_for_url, is_supported_url, get_brand_from_url, get_supported_brands
 )
-from scraper import get_scraper_for_url, is_supported_url, get_brand_from_url, get_supported_brands
-from notifications import send_notification
+import time
+from datetime import datetime
+import pandas as pd
+import streamlit.components.v1 as components
+import base64
+import streamlit as st
+import sys
+import os
+
+# Add src to path for package imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
 
 # Page configuration
 st.set_page_config(

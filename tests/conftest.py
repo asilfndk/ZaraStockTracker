@@ -1,9 +1,14 @@
 """Pytest fixtures for Zara Stock Tracker tests"""
 import pytest
 import os
+import sys
 import tempfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# Add src to path
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), 'src'))
 
 # Set test database path before importing database module
 TEST_DB_DIR = tempfile.mkdtemp()
@@ -19,7 +24,7 @@ def test_db_path():
 @pytest.fixture
 def test_engine(test_db_path):
     """Create test database engine"""
-    from database import Base
+    from zara_tracker.core.models import Base
 
     engine = create_engine(f"sqlite:///{test_db_path}", echo=False)
     Base.metadata.create_all(bind=engine)

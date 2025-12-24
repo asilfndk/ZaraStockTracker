@@ -1,13 +1,15 @@
 """Tests for Zara scraper module"""
-from exceptions import ParseError
-from zara_scraper import ZaraScraper, SizeStock, ProductInfo
+from zara_tracker.exceptions import ParseError
+from zara_tracker.core.scraper import ZaraScraper, SizeStock, ProductInfo
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import sys
 import os
 
-# Add parent directory to path
+# Add parent and src directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 
 class TestZaraScraperURLParsing:
@@ -95,7 +97,7 @@ class TestZaraScraperParsing:
 class TestZaraScraperIntegration:
     """Integration tests for scraper (with mocked HTTP)"""
 
-    @patch('zara_scraper.requests.get')
+    @patch('zara_tracker.core.scraper.requests.Session.get')
     def test_get_stock_status_success(self, mock_get, sample_api_response):
         """Test successful stock status retrieval"""
         # First call for API request
@@ -115,7 +117,7 @@ class TestZaraScraperIntegration:
             assert result.name == "Test Product"
         # If None, it's due to mock not matching expected flow - acceptable
 
-    @patch('zara_scraper.requests.get')
+    @patch('zara_tracker.core.scraper.requests.Session.get')
     def test_get_stock_status_api_error(self, mock_get):
         """Test handling API error"""
         mock_response = Mock()

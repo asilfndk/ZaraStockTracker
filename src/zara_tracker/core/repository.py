@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, Session
 
-from zara_tracker.core.models import (
+from .models import (
     Base,
     ZaraProduct,
     ZaraStockStatus,

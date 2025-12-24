@@ -1,16 +1,14 @@
 """Tests for database models and operations"""
-from database import (
-    ZaraProduct, ZaraStockStatus, PriceHistory, UserSettings,
-    init_db, get_session, get_setting, set_setting,
-    add_price_history, get_price_history
-)
+from zara_tracker.core.models import ZaraProduct, ZaraStockStatus, PriceHistory, UserSettings
 import pytest
 from datetime import datetime
 import sys
 import os
 
-# Add parent directory to path
+# Add parent and src directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 
 class TestZaraProduct:
