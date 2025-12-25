@@ -147,25 +147,15 @@ class ZaraStockTrackerApp(rumps.App):
             time.sleep(self.check_interval)
 
     def open_dashboard(self, _):
-        """Open native dashboard window."""
-        try:
-            from zara_tracker.ui.native_dashboard import NativeDashboard, PYOBJC_AVAILABLE
-
-            if PYOBJC_AVAILABLE:
-                if NativeDashboard.show():
-                    return
-
-            # Fallback to Streamlit if native dashboard fails
-            self._open_streamlit_dashboard()
-
-        except Exception as e:
-            print(f"Dashboard error: {e}")
-            self._open_streamlit_dashboard()
+        """Open Streamlit dashboard."""
+        self._open_streamlit_dashboard()
 
     def _open_streamlit_dashboard(self):
-        """Fallback: Open Streamlit dashboard."""
+        """Open Streamlit dashboard."""
         try:
             import urllib.request
+
+            # Check if already running
             try:
                 urllib.request.urlopen("http://localhost:8505", timeout=1)
                 subprocess.run(["open", "http://localhost:8505"])
@@ -177,27 +167,29 @@ class ZaraStockTrackerApp(rumps.App):
                 subprocess.run(["open", "http://localhost:8505"])
                 return
 
-            # Find streamlit
-            venv_streamlit = os.path.join(APP_DIR, ".venv", "bin", "streamlit")
-            if os.path.exists(venv_streamlit):
-                streamlit_path = venv_streamlit
-            else:
+            # Use absolute paths - project root
+            project_root = "/Users/asilfndk/Documents/GitHub/ZaraStok"
+            streamlit_path = os.path.join(
+                project_root, ".venv", "bin", "streamlit")
+            app_path = os.path.join(project_root, "app.py")
+
+            if not os.path.exists(streamlit_path):
+                # Fallback to system streamlit
                 result = subprocess.run(
                     ["which", "streamlit"], capture_output=True, text=True)
                 if result.returncode == 0:
                     streamlit_path = result.stdout.strip()
                 else:
                     rumps.notification("Zara Stock Tracker",
-                                       "Error", "Streamlit not found. Use native dashboard.")
+                                       "Error", "Streamlit not found")
                     return
 
-            app_path = os.path.join(APP_DIR, "app.py")
             env = os.environ.copy()
-            env["PYTHONPATH"] = os.path.join(APP_DIR, "src")
+            env["PYTHONPATH"] = os.path.join(project_root, "src")
 
             self.streamlit_process = subprocess.Popen(
                 [streamlit_path, "run", app_path, "--server.port", "8505"],
-                cwd=APP_DIR,
+                cwd=project_root,
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
