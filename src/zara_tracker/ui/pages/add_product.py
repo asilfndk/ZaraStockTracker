@@ -69,7 +69,7 @@ def render() -> None:
                     st.balloons()
                     send_notification(
                         "🎉 Size Available!",
-                        f"The size you wanted is already in stock!"
+                        "The size you wanted is already in stock!"
                     )
                     st.success(f"🎉 Great! {size_input} is currently IN STOCK!")
                 else:
