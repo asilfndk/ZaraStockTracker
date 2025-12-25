@@ -1,0 +1,15 @@
+# Zara Stock Tracker - Requirements
+# Core
+requests>=2.31.0
+sqlalchemy>=2.0.0
+
+# Menu Bar App
+rumps>=0.4.0
+pyobjc-core>=10.0
+pyobjc-framework-Cocoa>=10.0
+
+# Web Dashboard
+streamlit>=1.28.0
+
+# Build (optional - for creating .app)
+pyinstaller>=6.0.0
