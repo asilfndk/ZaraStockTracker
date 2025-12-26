@@ -150,6 +150,17 @@ class ZaraStockTrackerApp(rumps.App):
         """Open Streamlit dashboard."""
         self._open_streamlit_dashboard()
 
+    def _get_project_root(self):
+        """Get project root from config file."""
+        config_path = os.path.expanduser(
+            "~/.zara_stock_tracker/project_path.txt")
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                path = f.read().strip()
+                if os.path.exists(path):
+                    return path
+        return None
+
     def _open_streamlit_dashboard(self):
         """Open Streamlit dashboard."""
         try:
@@ -167,8 +178,13 @@ class ZaraStockTrackerApp(rumps.App):
                 subprocess.run(["open", "http://localhost:8505"])
                 return
 
-            # Use absolute paths - project root
-            project_root = "/Users/asilfndk/Documents/GitHub/ZaraStok"
+            # Get project root from config
+            project_root = self._get_project_root()
+            if not project_root:
+                rumps.notification("Zara Stock Tracker", "Error",
+                                   "Project path not configured. Run install.sh again.")
+                return
+
             streamlit_path = os.path.join(
                 project_root, ".venv", "bin", "streamlit")
             app_path = os.path.join(project_root, "app.py")
@@ -183,6 +199,11 @@ class ZaraStockTrackerApp(rumps.App):
                     rumps.notification("Zara Stock Tracker",
                                        "Error", "Streamlit not found")
                     return
+
+            if not os.path.exists(app_path):
+                rumps.notification("Zara Stock Tracker", "Error",
+                                   f"app.py not found at {project_root}")
+                return
 
             env = os.environ.copy()
             env["PYTHONPATH"] = os.path.join(project_root, "src")

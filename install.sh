@@ -119,18 +119,17 @@ pip install pyinstaller -q
 echo "   ✓ All dependencies installed"
 
 # ============================================================
-# Step 6: Update Project Paths
+# Step 6: Save Project Path Configuration
 # ============================================================
 echo ""
 echo "⚙️  Step 5: Configuring project paths..."
 
-# Update hardcoded path in menu_bar_app.py
-if grep -q "/Users/asilfndk/Documents/GitHub/ZaraStok" menu_bar_app.py; then
-    sed -i '' "s|/Users/asilfndk/Documents/GitHub/ZaraStok|$SCRIPT_DIR|g" menu_bar_app.py
-    echo "   ✓ Updated menu_bar_app.py paths"
-else
-    echo "   ✓ Paths already configured"
-fi
+# Create config directory if not exists
+mkdir -p ~/.zara_stock_tracker
+
+# Save project path for the app to find
+echo "$SCRIPT_DIR" > ~/.zara_stock_tracker/project_path.txt
+echo "   ✓ Project path saved to ~/.zara_stock_tracker/project_path.txt"
 
 # ============================================================
 # Step 7: Initialize Database
